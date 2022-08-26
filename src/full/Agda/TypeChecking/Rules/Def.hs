@@ -73,6 +73,9 @@ import Agda.Utils.Size
 import qualified Agda.Utils.SmallSet as SmallSet
 
 import Agda.Utils.Impossible
+import Agda.TypeChecking.Monad.Boundary (withBoundary, discardBoundary, withBoundaryHint)
+import qualified Data.Set as Set
+import Agda.TypeChecking.IApplyConfluence (withLHSBoundary)
 
 ---------------------------------------------------------------------------
 -- * Definitions by pattern matching
@@ -709,7 +712,9 @@ checkClause t withSub c@(A.Clause lhs@(A.SpineLHS i x aps) strippedPats rhs0 wh 
             updateClause (A.Clause f spats rhs wh ca) =
               A.Clause f (applySubst patSubst spats) (updateRHS rhs) wh ca
 
-        (body, with) <- bindAsPatterns asb $ checkWhere wh $ checkRHS i x aps t' lhsResult rhs
+        (body, with) <- bindAsPatterns asb $ checkWhere wh $
+          withLHSBoundary x ps t' $
+          checkRHS i x aps t' lhsResult rhs
 
         -- Note that the with function doesn't necessarily share any part of
         -- the context with the parent (but withSub will take you from parent
@@ -774,7 +779,6 @@ checkClause t withSub c@(A.Clause lhs@(A.SpineLHS i x aps) strippedPats rhs0 wh 
                  , clauseEllipsis    = lhsEllipsis i
                  , clauseWhereModule = A.whereModule wh
                  }
-
 
 
 -- | Generate the abstract pattern corresponding to Refl
@@ -1213,7 +1217,7 @@ checkWhere
   :: A.WhereDeclarations -- ^ Where-declarations to check.
   -> TCM a               -- ^ Continuation.
   -> TCM a
-checkWhere wh@(A.WhereDecls whmod whNamed ds) ret = do
+checkWhere wh@(A.WhereDecls whmod whNamed ds) ret = discardBoundary $ \_ -> do
   when (not whNamed) $ ensureNoNamedWhereInRefinedContext whmod
   loop ds
   where
@@ -1275,4 +1279,4 @@ newSection m gtel@(A.GeneralizeTel _ tel) cont = do
 atClause :: QName -> Int -> Type -> Maybe Substitution -> A.SpineClause -> TCM a -> TCM a
 atClause name i t sub cl ret = do
   clo <- buildClosure ()
-  localTC (\ e -> e { envClause = IPClause name i t sub cl clo [] }) ret
+  localTC (\ e -> e { envClause = IPClause name i t sub cl clo }) ret

@@ -13,6 +13,7 @@ import Agda.Syntax.Position
 import Agda.Syntax.Scope.Monad
 import Agda.Syntax.Translation.AbstractToConcrete
 
+import {-# SOURCE #-} Agda.TypeChecking.Monad.Boundary
 import Agda.TypeChecking.Monad.Base
 import Agda.TypeChecking.Monad.Context
 import Agda.TypeChecking.Monad.Debug
@@ -193,6 +194,11 @@ instance PrettyTCM Call where
       [prettyA $ A.Apply info m1 modapp initCopyInfo empty]
       where
       info = A.ModuleInfo noRange noRange Nothing Nothing Nothing
+
+    CheckTermBoundary _ con ty tm -> vcat $
+      [ "when checking the boundary condition"
+      , prettyTCM con <+> "=" <+> prettyTCM tm
+      ]
 
     ModuleContents -> fsep $ pwords "when retrieving the contents of a module"
 

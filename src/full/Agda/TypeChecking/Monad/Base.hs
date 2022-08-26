@@ -55,7 +55,7 @@ import GHC.Generics (Generic)
 
 import Agda.Benchmarking (Benchmark, Phase)
 
-import Agda.Syntax.Concrete (TopLevelModuleName)
+import Agda.Syntax.Concrete.Name ( TopLevelModuleName )
 import Agda.Syntax.Common
 import qualified Agda.Syntax.Concrete as C
 import Agda.Syntax.Concrete.Definitions
@@ -86,6 +86,7 @@ import {-# SOURCE #-} Agda.Compiler.Backend hiding (Args)
 
 import Agda.Interaction.Options
 import Agda.Interaction.Options.Warnings
+import {-# SOURCE #-} Agda.TypeChecking.Monad.Boundary
 import {-# SOURCE #-} Agda.Interaction.Response
   (InteractionOutputCallback, defaultInteractionOutputCallback)
 import Agda.Interaction.Highlighting.Precise
@@ -1639,25 +1640,6 @@ instance HasTag InteractionPoint where
 --   'ipSolved' to @True@.  (Issue #2368)
 type InteractionPoints = BiMap InteractionId InteractionPoint
 
--- | Flag to indicate whether the meta is overapplied in the
---   constraint.  A meta is overapplied if it has more arguments than
---   the size of the telescope in its creation environment
---   (as stored in MetaInfo).
-data Overapplied = Overapplied | NotOverapplied
-  deriving (Eq, Show, Generic)
-
--- | Datatype representing a single boundary condition:
---   x_0 = u_0, ... ,x_n = u_n ⊢ t = ?n es
-data IPBoundary' t = IPBoundary
-  { ipbEquations :: [(t,t)] -- ^ [x_0 = u_0, ... ,x_n = u_n]
-  , ipbValue     :: t          -- ^ @t@
-  , ipbMetaApp   :: t          -- ^ @?n es@
-  , ipbOverapplied :: Overapplied -- ^ Is @?n@ overapplied in @?n es@ ?
-  }
-  deriving (Show, Functor, Foldable, Traversable, Generic)
-
-type IPBoundary = IPBoundary' Term
-
 -- | Which clause is an interaction point located in?
 data IPClause = IPClause
   { ipcQName    :: QName              -- ^ The name of the function.
@@ -1666,14 +1648,13 @@ data IPClause = IPClause
   , ipcWithSub  :: Maybe Substitution -- ^ Module parameter substitution
   , ipcClause   :: A.SpineClause      -- ^ The original AST clause.
   , ipcClosure  :: Closure ()         -- ^ Environment for rechecking the clause.
-  , ipcBoundary :: [Closure IPBoundary] -- ^ The boundary imposed by the LHS.
   }
   | IPNoClause -- ^ The interaction point is not in the rhs of a clause.
   deriving (Generic)
 
 instance Eq IPClause where
   IPNoClause           == IPNoClause             = True
-  IPClause x i _ _ _ _ _ == IPClause x' i' _ _ _ _ _ = x == x' && i == i'
+  IPClause x i _ _ _ _ == IPClause x' i' _ _ _ _ = x == x' && i == i'
   _                    == _                      = False
 
 ---------------------------------------------------------------------------
@@ -3143,6 +3124,7 @@ data Call
   | ScopeCheckExpr C.Expr
   | ScopeCheckDeclaration NiceDeclaration
   | ScopeCheckLHS C.QName C.Pattern
+  | CheckTermBoundary Range BoundaryConstraint Type Term
   | NoHighlighting
   | ModuleContents  -- ^ Interaction command: show module contents.
   | SetRange Range  -- ^ used by 'setCurrentRange'
@@ -3184,6 +3166,7 @@ instance Pretty Call where
     pretty CheckConfluence{}         = "CheckConfluence"
     pretty NoHighlighting{}          = "NoHighlighting"
     pretty ModuleContents{}          = "ModuleContents"
+    pretty CheckTermBoundary{}       = "CheckTermBoundary"
 
 instance HasRange Call where
     getRange (CheckClause _ c)               = getRange c
@@ -3219,6 +3202,7 @@ instance HasRange Call where
     getRange (CheckSectionApplication r _ _) = r
     getRange (CheckIsEmpty r _)              = r
     getRange (CheckConfluence rule1 rule2)   = max (getRange rule1) (getRange rule2)
+    getRange (CheckTermBoundary r _ _ _)     = r
     getRange NoHighlighting                  = noRange
     getRange ModuleContents                  = noRange
 
@@ -3468,6 +3452,7 @@ data TCEnv =
                 -- the counter is decreased in the failure
                 -- continuation of
                 -- 'Agda.TypeChecking.SyntacticEquality.checkSyntacticEquality'.
+          , envBoundary :: Boundary
           }
     deriving (Generic)
 
@@ -3529,6 +3514,7 @@ initEnv = TCEnv { envContext             = []
                 , envConflComputingOverlap  = False
                 , envCurrentlyElaborating   = False
                 , envSyntacticEqualityFuel  = Strict.Nothing
+                , envBoundary               = Boundary []
                 }
 
 class LensTCEnv a where
@@ -5272,8 +5258,6 @@ instance NFData RunMetaOccursCheck
 instance NFData MetaInfo
 instance NFData InteractionPoint
 instance NFData InteractionPoints
-instance NFData Overapplied
-instance NFData t => NFData (IPBoundary' t)
 instance NFData IPClause
 instance NFData DisplayForm
 instance NFData DisplayTerm

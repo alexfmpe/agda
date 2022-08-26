@@ -167,7 +167,6 @@ instance Instantiate t => Instantiate (Abs t)
 instance Instantiate t => Instantiate (Arg t)
 instance Instantiate t => Instantiate (Elim' t)
 instance Instantiate t => Instantiate (Tele t)
-instance Instantiate t => Instantiate (IPBoundary' t)
 
 instance (Instantiate a, Instantiate b) => Instantiate (a,b) where
     instantiate' (x,y) = (,) <$> instantiate' x <*> instantiate' y
@@ -949,10 +948,6 @@ instance Reduce EqualityView where
     <*> reduce' a
     <*> reduce' b
 
-instance Reduce t => Reduce (IPBoundary' t) where
-  reduce' = traverse reduce'
-  reduceB' = fmap sequenceA . traverse reduceB'
-
 ---------------------------------------------------------------------------
 -- * Simplification
 ---------------------------------------------------------------------------
@@ -977,7 +972,6 @@ instance Simplify t => Simplify (Strict.Maybe t)
 instance Simplify t => Simplify (Arg t)
 instance Simplify t => Simplify (Elim' t)
 instance Simplify t => Simplify (Named name t)
-instance Simplify t => Simplify (IPBoundary' t)
 
 instance (Simplify a, Simplify b) => Simplify (a,b) where
     simplify' (x,y) = (,) <$> simplify' x <*> simplify' y
@@ -1149,7 +1143,6 @@ instance Normalise t => Normalise (Strict.Maybe t)
 -- Arg not included since we do not normalize irrelevant subterms
 -- Elim' not included since it contains Arg
 instance Normalise t => Normalise (Named name t)
-instance Normalise t => Normalise (IPBoundary' t)
 instance Normalise t => Normalise (WithHiding t)
 
 instance (Normalise a, Normalise b) => Normalise (a,b) where
@@ -1335,7 +1328,6 @@ instance InstantiateFull t => InstantiateFull (Arg t)
 instance InstantiateFull t => InstantiateFull (Elim' t)
 instance InstantiateFull t => InstantiateFull (Named name t)
 instance InstantiateFull t => InstantiateFull (WithArity t)
-instance InstantiateFull t => InstantiateFull (IPBoundary' t)
 
 -- Tuples:
 

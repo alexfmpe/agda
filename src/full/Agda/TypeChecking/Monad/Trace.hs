@@ -53,6 +53,7 @@ interestingCall = \case
     InferExpr{}               -> True
     CheckExprCall{}           -> True
     CheckDotPattern{}         -> True
+    CheckTermBoundary{}       -> True
     IsTypeCall{}              -> True
     IsType_{}                 -> True
     CheckArguments{}          -> True
@@ -184,6 +185,7 @@ instance MonadTrace TCM where
       CheckDataDef{}            -> True
       CheckRecDef{}             -> True
       CheckConstructor{}        -> True
+      CheckTermBoundary{}       -> False
       CheckConstructorFitsIn{}  -> False
       CheckFunDefCall _ _ _ h   -> h
       CheckPragma{}             -> True

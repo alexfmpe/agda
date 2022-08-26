@@ -1,3 +1,4 @@
-PathWithBoundary.agda:17,1-20,16
-suc (w + m) != m of type Nat
-when checking the definition of PathWithBoundary.with-18
+PathWithBoundary.agda:20,1-16
+m != suc (w + m) of type Nat
+when checking the boundary condition
+(i = i0) ⊢ false n i | suc w = m

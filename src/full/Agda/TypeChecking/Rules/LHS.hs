@@ -92,6 +92,8 @@ import Agda.Utils.Size
 import Agda.Utils.Tuple
 
 import Agda.Utils.Impossible
+import Agda.TypeChecking.Monad.Boundary (withBoundary)
+import Agda.TypeChecking.With (patsToElims)
 
 --UNUSED Liang-Ting Chen 2019-07-16
 ---- | Compute the set of flexible patterns in a list of patterns. The result is

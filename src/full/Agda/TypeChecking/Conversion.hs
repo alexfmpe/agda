@@ -1908,7 +1908,12 @@ equalSort s1 s2 = do
 --   return xs
 
 forallFaceMaps :: MonadConversion m => Term -> (IntMap Bool -> Blocker -> Term -> m a) -> (Substitution -> m a) -> m [a]
-forallFaceMaps t kb k = do
+forallFaceMaps phi blocked cont = forallFaceMaps' phi blocked (const cont)
+
+forallFaceMaps'
+  :: MonadConversion m => Term -> (IntMap Bool -> Blocker -> Term -> m a)
+  -> (IntMap Bool -> Substitution -> m a) -> m [a]
+forallFaceMaps' t kb k = do
   reportSDoc "conv.forall" 20 $
       fsep ["forallFaceMaps"
            , prettyTCM t
@@ -1935,16 +1940,16 @@ forallFaceMaps t kb k = do
         tel <- getContextTelescope
         m <- currentModule
         sub <- getModuleParameterSub m
-        reportS "conv.forall" 10
-          [ replicate 10 '-'
-          , show (envCurrentModule $ clEnv cl)
-          , show (envLetBindings $ clEnv cl)
-          , show tel -- (toTelescope $ envContext $ clEnv cl)
-          , show sigma
-          , show m
-          , show sub
+        reportSDoc "conv.forall" 10 $ vcat
+          [ prettyTCM $ replicate 10 '-'
+          , prettyTCM (envCurrentModule $ clEnv cl)
+          , pretty (envLetBindings $ clEnv cl)
+          , prettyTCM tel -- (toTelescope $ envContext $ clEnv cl)
+          , prettyTCM sigma
+          , prettyTCM m
+          , prettyTCM sub
           ]
-        k sigma
+        k ms sigma
   where
     -- TODO Andrea: inefficient because we try to reduce the ts which we know are in whnf
     ifBlockeds ts blocked unblocked = do
