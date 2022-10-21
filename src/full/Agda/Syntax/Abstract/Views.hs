@@ -73,6 +73,18 @@ lamView (Lam i b e) = cons b $ lamView e
 lamView (ScopedExpr _ e) = lamView e
 lamView e = LamView [] e
 
+-- | Collect @A.Pi@s.
+data PiView = PiView [(ExprInfo, Telescope1)] Type
+
+piView :: Expr -> PiView
+piView = \case
+   Pi i tel b -> cons $ piView b
+     where cons (PiView tels t) = PiView ((i,tel) : tels) t
+   e -> PiView [] e
+
+unPiView :: PiView -> Expr
+unPiView (PiView tels t) = foldr (uncurry Pi) t tels
+
 -- | Gather top-level 'AsP'atterns and 'AnnP'atterns to expose underlying pattern.
 asView :: A.Pattern -> ([Name], [A.Expr], A.Pattern)
 asView (A.AsP _ x p)  = (\(asb, ann, p) -> (unBind x : asb, ann, p)) $ asView p
@@ -160,7 +172,6 @@ instance ExprLike Expr where
       Generalized  s e           -> Generalized s <$> recurse e
       Fun ei arg e               -> Fun ei <$> recurse arg <*> recurse e
       Let ei bs e                -> Let ei <$> recurse bs <*> recurse e
-      ETel tel                   -> ETel <$> recurse tel
       Rec ei bs                  -> Rec ei <$> recurse bs
       RecUpdate ei e bs          -> RecUpdate ei <$> recurse e <*> recurse bs
       ScopedExpr sc e            -> ScopedExpr sc <$> recurse e
@@ -193,7 +204,6 @@ instance ExprLike Expr where
       Generalized _ e        -> m `mappend` fold e
       Fun _ e e'             -> m `mappend` fold e `mappend` fold e'
       Let _ bs e             -> m `mappend` fold bs `mappend` fold e
-      ETel tel               -> m `mappend` fold tel
       Rec _ as               -> m `mappend` fold as
       RecUpdate _ e as       -> m `mappend` fold e `mappend` fold as
       ScopedExpr _ e         -> m `mappend` fold e
@@ -229,7 +239,6 @@ instance ExprLike Expr where
       Generalized s e            -> f =<< Generalized s <$> trav e
       Fun ei arg e               -> f =<< Fun ei <$> trav arg <*> trav e
       Let ei bs e                -> f =<< Let ei <$> trav bs <*> trav e
-      ETel tel                   -> f =<< ETel <$> trav tel
       Rec ei bs                  -> f =<< Rec ei <$> trav bs
       RecUpdate ei e bs          -> f =<< RecUpdate ei <$> trav e <*> trav bs
       ScopedExpr sc e            -> f =<< ScopedExpr sc <$> trav e
@@ -291,6 +300,11 @@ instance ExprLike DataDefParams where
   recurseExpr  f (DataDefParams s tel) = DataDefParams s <$> recurseExpr f tel
   foldExpr     f (DataDefParams s tel) = foldExpr f tel
   traverseExpr f (DataDefParams s tel) = DataDefParams s <$> traverseExpr f tel
+
+instance ExprLike TypedBindingInfo where
+  recurseExpr f (TypedBindingInfo s t)  = TypedBindingInfo <$> recurseExpr f s <*> pure t
+  foldExpr f (TypedBindingInfo s t)     = foldExpr f s
+  traverseExpr f (TypedBindingInfo s t) = TypedBindingInfo <$> traverseExpr f s <*> pure t
 
 instance ExprLike TypedBinding where
   recurseExpr f e =
@@ -395,6 +409,7 @@ instance ExprLike Pragma where
       InjectivePragma{}           -> pure p
       InlinePragma{}              -> pure p
       EtaPragma{}                 -> pure p
+      NotProjectionLikePragma{}   -> pure p
       DisplayPragma f xs e        -> DisplayPragma f <$> rec xs <*> rec e
     where
       rec :: RecurseExprRecFn m
@@ -510,15 +525,16 @@ instance DeclaredNames Declaration where
 instance DeclaredNames Pragma where
   declaredNames = \case
     BuiltinNoDefPragma _b kind x -> singleton $ WithKind kind x
-    BuiltinPragma{}         -> mempty
-    CompilePragma{}         -> mempty
-    RewritePragma{}         -> mempty
-    StaticPragma{}          -> mempty
-    EtaPragma{}             -> mempty
-    InjectivePragma{}       -> mempty
-    InlinePragma{}          -> mempty
-    DisplayPragma{}         -> mempty
-    OptionsPragma{}         -> mempty
+    BuiltinPragma{}           -> mempty
+    CompilePragma{}           -> mempty
+    RewritePragma{}           -> mempty
+    StaticPragma{}            -> mempty
+    EtaPragma{}               -> mempty
+    InjectivePragma{}         -> mempty
+    InlinePragma{}            -> mempty
+    NotProjectionLikePragma{} -> mempty
+    DisplayPragma{}           -> mempty
+    OptionsPragma{}           -> mempty
 
 instance DeclaredNames Clause where
   declaredNames (Clause _ _ rhs decls _) = declaredNames rhs <> declaredNames decls
@@ -580,7 +596,6 @@ instance DeclaredNames RHS where
 --     Set{}                 -> mempty
 --     Prop{}                -> mempty
 --     Let _ lbs e           -> declaredNames lbs <> declaredNames e
---     ETel{}                -> __IMPOSSIBLE__
 --     Rec _ fields          -> declaredNames fields
 --     RecUpdate _ e fs      -> declaredNames e <> declaredNames fs
 --     ScopedExpr _ e        -> declaredNames e

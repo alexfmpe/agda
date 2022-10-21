@@ -191,7 +191,7 @@ isBuiltinFun = asks $ is . builtins
   where is m q b = Just q == Map.lookup b m
 
 -- | Resolve a concrete name. If illegally ambiguous fail with the ambiguous names.
-resolveName :: KindsOfNames -> Maybe (Set A.Name) -> C.QName -> AbsToCon (Either (List1 A.QName) ResolvedName)
+resolveName :: KindsOfNames -> Maybe (Set A.Name) -> C.QName -> AbsToCon (Either AmbiguousNameReason ResolvedName)
 resolveName kinds candidates q = runExceptT $ tryResolveName kinds candidates q
 
 -- | Treat illegally ambiguous names as UnknownNames.
@@ -883,7 +883,7 @@ instance ToConcrete A.Expr where
                 reportSLn "extendedlambda" 50 $ "abstractToConcrete extended lambda patterns ps = " ++ prettyShow ps
                 return $ LamClause ps rhs ca
               decl2clause _ = __IMPOSSIBLE__
-          C.ExtendedLam (getRange i) erased . List1.fromList __IMPOSSIBLE__ <$>
+          C.ExtendedLam (getRange i) erased . List1.fromListSafe __IMPOSSIBLE__ <$>
             mapM decl2clause decls
             -- TODO List1: can we demonstrate non-emptiness?
 
@@ -932,8 +932,6 @@ instance ToConcrete A.Expr where
       bracket appBrackets $ do
         C.RecUpdate (getRange i) <$> toConcrete e <*> toConcreteTop fs
 
-    toConcrete (A.ETel tel) = C.ETel . catMaybes <$> toConcrete tel
-
     toConcrete (A.ScopedExpr _ e) = toConcrete e
     toConcrete (A.Quote i) = return $ C.Quote (getRange i)
     toConcrete (A.QuoteTerm i) = return $ C.QuoteTerm (getRange i)
@@ -949,7 +947,7 @@ makeDomainFree :: A.LamBinding -> A.LamBinding
 makeDomainFree b@(A.DomainFull (A.TBind _ tac (x :| []) t)) =
   case unScope t of
     A.Underscore A.MetaInfo{metaNumber = Nothing} ->
-      A.DomainFree tac x
+      A.DomainFree (tbTacticAttr tac) x
     _ -> b
 makeDomainFree b = b
 
@@ -1006,10 +1004,10 @@ instance ToConcrete A.TypedBinding where
     type ConOfAbs A.TypedBinding = Maybe C.TypedBinding
 
     bindToConcrete (A.TBind r t xs e) ret = do
-        t <- traverse toConcrete t
+        tac <- traverse toConcrete (tbTacticAttr t)
         bindToConcrete (fmap forceNameIfHidden xs) $ \ xs -> do
           e <- toConcreteTop e
-          let setTac x = x { bnameTactic = t }
+          let setTac x = x { bnameTactic = tac , C.bnameIsFinite = tbFinite t }
           ret $ Just $ C.TBind r (fmap (updateNamedArg (fmap setTac)) xs) e
     bindToConcrete (A.TLet r lbs) ret =
         bindToConcrete lbs $ \ ds -> do
@@ -1302,6 +1300,7 @@ instance ToConcrete RangeAndPragma where
     A.StaticPragma x -> C.StaticPragma r <$> toConcrete x
     A.InjectivePragma x -> C.InjectivePragma r <$> toConcrete x
     A.InlinePragma b x -> C.InlinePragma r b <$> toConcrete x
+    A.NotProjectionLikePragma q -> C.NotProjectionLikePragma r <$> toConcrete q
     A.EtaPragma x    -> C.EtaPragma    r <$> toConcrete x
     A.DisplayPragma f ps rhs ->
       C.DisplayPragma r <$> toConcrete (A.DefP (PatRange noRange) (unambiguous f) ps) <*> toConcrete rhs

@@ -169,8 +169,8 @@ instance ToTerm Text    where toTerm = return $ Lit . LitString
 instance ToTerm QName   where toTerm = return $ Lit . LitQName
 instance ToTerm MetaId  where
   toTerm = do
-    file <- getCurrentPath
-    return $ Lit . LitMeta file
+    top <- fromMaybe __IMPOSSIBLE__ <$> currentTopLevelModule
+    return $ Lit . LitMeta top
 
 instance ToTerm Integer where
   toTerm = do
@@ -503,9 +503,9 @@ primWord64ToNatInjective =  do
 primFloatToWord64Injective :: TCM PrimitiveImpl
 primFloatToWord64Injective = do
   float  <- primType (undefined :: Double)
-  word   <- primType (undefined :: Word64)
+  mword  <- primType (undefined :: Maybe Word64)
   toWord <- primFunName <$> getPrimitive "primFloatToWord64"
-  mkPrimInjective float word toWord
+  mkPrimInjective float mword toWord
 
 primQNameToWord64sInjective :: TCM PrimitiveImpl
 primQNameToWord64sInjective = do

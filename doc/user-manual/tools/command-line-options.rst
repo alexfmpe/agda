@@ -267,6 +267,10 @@ Printing and debugging
          - Count number of created metavariables
        * - ``interactive``
          - Measure time of interactive commands
+       * - ``conversion``
+         - Count number of times various steps of the conversion algorithm are
+           used (reduction, eta-expansion, syntactic equality, etc)
+
 
     Only one of ``internal``, ``modules``, and ``definitions`` can be turned on
     at a time. You can also give ``--profile=all`` to turn on all profiling
@@ -496,12 +500,14 @@ Other features
      must be a natural number).
 
      If ``N`` is omitted, then the syntactic equality shortcut is
-     enabled without any restrictions.
+     enabled without any restrictions. (This is the default.)
 
      If ``N`` is given, then the syntactic equality shortcut is given
      ``N`` units of fuel. The exact meaning of this is
      implementation-dependent, but successful uses of the shortcut do
      not affect the amount of fuel.
+
+     Note that this option is experimental and subject to change.
 
 .. option:: --safe
 

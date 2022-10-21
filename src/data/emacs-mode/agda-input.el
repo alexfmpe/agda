@@ -235,9 +235,6 @@ order for the change to take effect."
   ("squb="  . ("⊑"))  ("squp="  . ("⊒"))
   ("squb=n" . ("⋢"))  ("squp=n" . ("⋣"))
 
-  ("<"    . ,(agda-input-to-string-list "<≪⋘≺⊂⋐⊏⊰⊲⋖＜"))
-  (">"    . ,(agda-input-to-string-list ">≫⋙≻⊃⋑⊐⊱⊳⋗＞"))
-
   ;; Set membership etc.
 
   ("member" . ,(agda-input-to-string-list "∈∉∊∋∌∍⋲⋳⋴⋵⋶⋷⋸⋹⋺⋻⋼⋽⋾⋿"))
@@ -298,7 +295,7 @@ order for the change to take effect."
   ("x"         . ("×"))
   ("o"         . ("∘"))
   ("comp"      . ("∘"))
-  ("."         . ("∙．"))
+  ("."         . ,(agda-input-to-string-list "∙．"))
   ("*"         . ("⋆"))
   (".+"        . ("∔"))
   (".-"        . ("∸"))
@@ -316,7 +313,7 @@ order for the change to take effect."
   ("increment" . ("∆"))
   ("inf"       . ("∞"))
   ("&"         . ("⅋"))
-  ("z;"        . ("⨟⨾"))
+  ("z;"        . ,(agda-input-to-string-list "⨟⨾"))
   ("z:"        . ("⦂"))
 
   ;; Circled operators.
@@ -737,8 +734,8 @@ order for the change to take effect."
 
   ("[[" . ("⟦"))
   ("]]" . ("⟧"))
-  ("<"  . ("⟨"))
-  (">"  . ("⟩"))
+  ("<"  . ,(agda-input-to-string-list "⟨<≪⋘≺⊂⋐⊏⊰⊲⋖＜"))
+  (">"  . ,(agda-input-to-string-list "⟩>≫⋙≻⊃⋑⊐⊱⊳⋗＞"))
   ("<<" . ("⟪"))
   (">>" . ("⟫"))
   ("{{" . ("⦃"))
@@ -756,8 +753,8 @@ order for the change to take effect."
   ("(|" . ("⦇"))  ;; Idiom brackets
   ("|)" . ("⦈"))
 
-  ("((" . ("⦅｟"))  ;; Banana brackets
-  ("))" . ("⦆｠"))
+  ("((" . ,(agda-input-to-string-list "⦅｟"))  ;; Banana brackets
+  ("))" . ,(agda-input-to-string-list "⦆｠"))
 
   ;; Primes.
 

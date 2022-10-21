@@ -65,14 +65,15 @@ import Agda.Utils.Impossible
 --   'Arg' is used for actual arguments ('Var', 'Con', 'Def' etc.)
 --   and in 'Abstract' syntax and other situations.
 --
---   [ cubical ] When @domFinite = True@ for the domain of a 'Pi'
---   type, the elements should be compared by tabulating the domain type.
---   Only supported in case the domain type is primIsOne, to obtain
---   the correct equality for partial elements.
+--   [ cubical ] When @annFinite (argInfoAnnotation domInfo) = True@ for
+--   the domain of a 'Pi' type, the elements should be compared by
+--   tabulating the domain type.  Only supported in case the domain type
+--   is primIsOne, to obtain the correct equality for partial elements.
 --
 data Dom' t e = Dom
   { domInfo   :: ArgInfo
-  , domFinite :: !Bool
+  , domIsFinite :: Bool
+    -- ^ Is this a Π-type (False), or a partial type (True)?
   , domName   :: Maybe NamedName  -- ^ e.g. @x@ in @{x = y : A} -> B@.
   , domElim   :: Maybe QName
   -- ^ Only present in the telescopes of record constructors, stores the
@@ -1373,9 +1374,8 @@ instance Pretty Sort where
       LockUniv -> "LockUniv"
       IntervalUniv -> "IntervalUniv"
       PiSort a s1 s2 -> mparens (p > 9) $
-        "piSort" <+> pDom (domInfo a) (text (absName s2) <+> ":" <+> pretty (unDom a))
-                      <+> parens (sep [ text ("λ " ++ absName s2 ++ " ->")
-                                      , nest 2 $ pretty (unAbs s2) ])
+        "piSort" <+> pDom (domInfo a) (text (absName s2) <+> ":" <+> pretty (unDom a) <+> ":" <+> pretty s1)
+                      <+> parens (pretty (unAbs s2))
       FunSort a b -> mparens (p > 9) $
         "funSort" <+> prettyPrec 10 a <+> prettyPrec 10 b
       UnivSort s -> mparens (p > 9) $ "univSort" <+> prettyPrec 10 s

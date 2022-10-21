@@ -9,7 +9,7 @@ import Data.IORef (IORef)
 import Data.Map (Map)
 
 import Agda.Syntax.Common (Nat, InteractionId)
-import Agda.Syntax.Concrete.Name (TopLevelModuleName)
+import Agda.Syntax.TopLevelModuleName (TopLevelModuleName)
 import Agda.Utils.FileName (AbsolutePath)
 import Agda.Syntax.Internal
 import Control.Monad.State

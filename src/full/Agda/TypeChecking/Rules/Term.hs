@@ -17,7 +17,7 @@ import qualified Data.Set as Set
 import Agda.Interaction.Options
 import Agda.Interaction.Highlighting.Generate (disambiguateRecordFields)
 
-import Agda.Syntax.Abstract (Binder)
+import Agda.Syntax.Abstract (Binder, TypedBindingInfo (tbTacticAttr))
 import qualified Agda.Syntax.Abstract as A
 import Agda.Syntax.Abstract.Views as A
 import qualified Agda.Syntax.Info as A
@@ -358,7 +358,7 @@ checkPiDomain = checkDomain PiNotLam
 checkTypedBindings :: LamOrPi -> A.TypedBinding -> (Telescope -> TCM a) -> TCM a
 checkTypedBindings lamOrPi (A.TBind r tac xps e) ret = do
     let xs = fmap (updateNamedArg $ A.unBind . A.binderName) xps
-    tac <- traverse (checkTacticAttribute lamOrPi) tac
+    tac <- traverse (checkTacticAttribute lamOrPi) (tbTacticAttr tac)
     whenJust tac $ \ t -> reportSDoc "tc.term.tactic" 30 $ "Checked tactic attribute:" <?> prettyTCM t
     -- Andreas, 2011-04-26 irrelevant function arguments may appear
     -- non-strictly in the codomain type
@@ -426,7 +426,7 @@ checkPath b@(A.TBind _r _tac (xp :| []) typ) body ty = do
         info = getArgInfo x
     PathType s path level typ lhs rhs <- pathView ty
     interval <- primIntervalType
-    v <- addContext ([x], interval) $
+    v <- addContext ([x], interval) $ setCurrentRange body $
       -- Path abstractions have nontrivial interactions with the
       -- environment boundary. For starters, they're an introduction
       -- form, so we have to IApply along the boundary before checking.
@@ -1267,8 +1267,6 @@ checkExpr' cmp e t =
             (dontCare <$> do applyRelevanceToContext Irrelevant $ checkExpr' cmp e t)
             (internalError "DontCare may only appear in irrelevant contexts")
 
-        A.ETel _   -> __IMPOSSIBLE__
-
         A.Dot{} -> genericError "Invalid dotted expression"
 
         -- Application
@@ -1367,7 +1365,6 @@ checkExpr' cmp e t =
       A.Rec{}        -> True
       A.RecUpdate{}  -> True
       A.ScopedExpr{} -> __IMPOSSIBLE__
-      A.ETel{}       -> __IMPOSSIBLE__
       _ -> False
 
 ---------------------------------------------------------------------------
@@ -1510,7 +1507,7 @@ checkKnownArguments
   -> TCM (Args, Type)   -- ^ Remaining inferred arguments, remaining type.
 checkKnownArguments []           vs t = return (vs, t)
 checkKnownArguments (arg : args) vs t = do
-  (vs', t') <- traceCall (SetRange $ getRange arg) $ checkKnownArgument arg vs t
+  (vs', t') <- setCurrentRange arg $ checkKnownArgument arg vs t
   checkKnownArguments args vs' t'
 
 -- | Check an argument whose value we already know.

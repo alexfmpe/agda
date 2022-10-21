@@ -28,6 +28,7 @@ import GHC.Generics (Generic)
 
 import Agda.Syntax.Position
 
+import Agda.Utils.BiMap (HasTag(..))
 import Agda.Utils.Functor
 import Agda.Utils.Lens
 import Agda.Utils.List1  ( List1, pattern (:|), (<|) )
@@ -1325,7 +1326,7 @@ instance LensLock Lock where
 
 instance LensLock ArgInfo where
   getLock = annLock . argInfoAnnotation
-  setLock l info = info { argInfoAnnotation = Annotation l }
+  setLock l info = info { argInfoAnnotation = (argInfoAnnotation info){ annLock = l } }
 
 instance LensLock (Arg t) where
   getLock = getLock . getArgInfo
@@ -2323,6 +2324,10 @@ instance NFData IsMacro
 
 newtype ModuleNameHash = ModuleNameHash { moduleNameHash :: Word64 }
   deriving (Eq, Ord, Hashable)
+
+instance HasTag ModuleNameHash where
+  type Tag ModuleNameHash = ModuleNameHash
+  tag = Just . id
 
 noModuleNameHash :: ModuleNameHash
 noModuleNameHash = ModuleNameHash 0

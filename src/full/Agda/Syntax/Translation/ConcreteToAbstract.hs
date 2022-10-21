@@ -35,7 +35,7 @@ import Data.Maybe
 import Data.Monoid (First(..))
 import Data.Void
 
-import Agda.Syntax.Concrete as C hiding (topLevelModuleName)
+import Agda.Syntax.Concrete as C
 import Agda.Syntax.Concrete.Generic
 import Agda.Syntax.Concrete.Operators
 import Agda.Syntax.Concrete.Pattern
@@ -56,11 +56,13 @@ import Agda.Syntax.Scope.Monad
 import Agda.Syntax.Translation.AbstractToConcrete (ToConcrete, ConOfAbs)
 import Agda.Syntax.DoNotation
 import Agda.Syntax.IdiomBrackets
+import Agda.Syntax.TopLevelModuleName
 
 import Agda.TypeChecking.Monad.Base hiding (ModuleInfo, MetaInfo)
 import Agda.TypeChecking.Monad.Builtin
 import Agda.TypeChecking.Monad.Trace (traceCall, setCurrentRange)
-import Agda.TypeChecking.Monad.State
+import Agda.TypeChecking.Monad.State hiding (topLevelModuleName)
+import qualified Agda.TypeChecking.Monad.State as S
 import Agda.TypeChecking.Monad.MetaVars (registerInteractionPoint)
 import Agda.TypeChecking.Monad.Debug
 import Agda.TypeChecking.Monad.Env (insideDotPattern, isInsideDotPattern, getCurrentPath)
@@ -172,7 +174,11 @@ recordConstructorType decls =
     buildType :: [C.NiceDeclaration] -> ScopeM A.Expr
       -- TODO: Telescope instead of Expr in abstract RecDef
     buildType ds = do
-      dummy <- A.Def . fromMaybe __IMPOSSIBLE__ <$> getBuiltinName' builtinSet
+      -- The constructor target type is computed in the type checker.
+      -- For now, we put a dummy expression there.
+      -- Andreas, 2022-10-06, issue #6165:
+      -- The dummy was builtinSet, but this might not be defined yet.
+      let dummy = A.Lit empty $ LitString "TYPE"
       tel   <- catMaybes <$> mapM makeBinding ds
       return $ A.mkPi (ExprRange (getRange ds)) tel dummy
 
@@ -181,7 +187,7 @@ recordConstructorType decls =
       let failure = typeError $ NotValidBeforeField d
           r       = getRange d
           mkLet d = Just . A.TLet r <$> toAbstract (LetDef d)
-      traceCall (SetRange r) $ case d of
+      setCurrentRange r $ case d of
 
         C.NiceField r pr ab inst tac x a -> do
           fx  <- getConcreteFixity x
@@ -834,7 +840,7 @@ scopeCheckExtendedLam r erased cs = do
       setScope si  -- This turns into an A.ScopedExpr si $ A.ExtendedLam...
       return $
         A.ExtendedLam (ExprRange r) di erased qname' $
-        List1.fromList __IMPOSSIBLE__ cs
+        List1.fromListSafe __IMPOSSIBLE__ cs
     _ -> __IMPOSSIBLE__
 
 -- | Raise an error if argument is a C.Dot with Hiding info.
@@ -1012,7 +1018,6 @@ instance ToAbstract C.Expr where
       C.Absurd _ -> notAnExpression e
 
   -- Impossible things
-      C.ETel _  -> __IMPOSSIBLE__
       C.Equal{} -> genericError "Parse error: unexpected '='"
       C.Ellipsis _ -> genericError "Parse error: unexpected '...'"
       C.DoubleDot _ _ -> genericError "Parse error: unexpected '..'"
@@ -1090,13 +1095,16 @@ instance ToAbstract C.TypedBinding where
   toAbstract (C.TBind r xs t) = do
     t' <- toAbstractCtx TopCtx t
     tac <- traverse toAbstract $
-             case List1.mapMaybe (bnameTactic . C.binderName . namedArg) xs of
-               []      -> Nothing
-               tac : _ -> Just tac
-               -- Invariant: all tactics are the same
-               -- (distributed in the parser, TODO: don't)
+      -- Invariant: all tactics are the same
+      -- (distributed in the parser, TODO: don't)
+      case List1.mapMaybe (bnameTactic . C.binderName . namedArg) xs of
+        []      -> Nothing
+        tac : _ -> Just tac
+
+    let fin = all (bnameIsFinite . C.binderName . namedArg) xs
     xs' <- toAbstract $ fmap (updateNamedArg (fmap $ NewName LambdaBound)) xs
-    return $ Just $ A.TBind r tac xs' t'
+
+    return $ Just $ A.TBind r (TypedBindingInfo tac fin) xs' t'
   toAbstract (C.TLet r ds) = A.mkTLet r <$> toAbstract (LetDefs ds)
 
 -- | Scope check a module (top level function).
@@ -1245,7 +1253,7 @@ scopeCheckModule r x qm tel checkDs = do
 data TopLevel a = TopLevel
   { topLevelPath           :: AbsolutePath
     -- ^ The file path from which we loaded this module.
-  , topLevelExpectedName   :: C.TopLevelModuleName
+  , topLevelExpectedName   :: TopLevelModuleName
     -- ^ The expected module name
     --   (coming from the import statement that triggered scope checking this file).
   , topLevelTheThing       :: a
@@ -1277,13 +1285,13 @@ instance ToAbstract (TopLevel [C.Declaration]) where
 
         -- If there are declarations after the top-level module
         -- we have to report a parse error here.
-        (_, C.Module{} : d : _) -> traceCall (SetRange $ getRange d) $
+        (_, C.Module{} : d : _) -> setCurrentRange d $
           genericError $ "No declarations allowed after top-level module."
 
         -- Otherwise, proceed.
         (outsideDecls, [ C.Module r m0 tel insideDecls ]) -> do
           -- If the module name is _ compute the name from the file path
-          m <- if isNoName m0
+          (m, top) <- if isNoName m0
                 then do
                   -- Andreas, 2017-07-28, issue #1077
                   -- Check if the insideDecls end in a single module which has the same
@@ -1295,7 +1303,8 @@ instance ToAbstract (TopLevel [C.Declaration]) where
                   -- report an error.
                   case flip span insideDecls $ \case { C.Module{} -> False; _ -> True } of
                     (ds0, (C.Module _ m1 _ _ : _))
-                       | C.toTopLevelModuleName m1 == expectedMName
+                       | rawTopLevelModuleNameForQName m1 ==
+                         rawTopLevelModuleName expectedMName
                          -- If the anonymous module comes from the user,
                          -- the range cannot be the beginningOfFile.
                          -- That is the range if the parser inserted the anon. module.
@@ -1308,12 +1317,17 @@ instance ToAbstract (TopLevel [C.Declaration]) where
                          void $ toAbstract (Declarations outsideDecls)
                          void $ toAbstract (Declarations ds0)
                          -- Fail with a crude error otherwise
-                         traceCall (SetRange $ getRange ds0) $ genericError
+                         setCurrentRange ds0 $ genericError
                            "Illegal declaration(s) before top-level module"
 
                     -- Otherwise, reconstruct the top-level module name
-                    _ -> return $ C.QName $ setRange (getRange m0) $
-                           C.simpleName $ stringToRawName $ rootNameModule file
+                    _ -> do
+                      let m = C.QName $ setRange (getRange m0) $
+                              C.simpleName $ stringToRawName $
+                              rootNameModule file
+                      top <- S.topLevelModuleName
+                               (rawTopLevelModuleNameForQName m)
+                      return (m, top)
                 -- Andreas, 2017-05-17, issue #2574, keep name as jump target!
                 -- Andreas, 2016-07-12, ALTERNATIVE:
                 -- -- We assign an anonymous file module the name expected from
@@ -1328,9 +1342,11 @@ instance ToAbstract (TopLevel [C.Declaration]) where
                 -- We need to check the module name against the file name here.
                 -- Otherwise one could sneak in a lie and confuse the scope
                 -- checker.
-                  checkModuleName (C.toTopLevelModuleName m0) (SourceFile file) $ Just expectedMName
-                  return m0
-          setTopLevelModule m
+                  top <- S.topLevelModuleName
+                           (rawTopLevelModuleNameForQName m0)
+                  checkModuleName top (SourceFile file) (Just expectedMName)
+                  return (m0, top)
+          setTopLevelModule top
           am <- toAbstract (NewModuleQName m)
           primitiveImport <- importPrimitives
           -- Scope check the declarations outside
@@ -1471,6 +1487,7 @@ instance ToAbstract Declarations where
        C.RewritePragma{}    -> Nothing
        -- @CompilePragma@ already handled in the nicifier
        C.CompilePragma{}    -> Nothing
+       C.NotProjectionLikePragma{} -> Nothing
 
 
 newtype LetDefs = LetDefs (List1 C.Declaration)
@@ -1926,7 +1943,7 @@ instance ToAbstract NiceDeclaration where
       dir <- notPublicWithoutOpen open dir
 
       -- Andreas, 2018-11-03, issue #3364, parse expression in as-clause as Name.
-      let illformedAs s = traceCall (SetRange $ getRange as) $ do
+      let illformedAs s = setCurrentRange as $ do
             -- If @as@ is followed by something that is not a simple name,
             -- throw a warning and discard the as-clause.
             Nothing <$ warning (IllformedAsClause s)
@@ -1939,16 +1956,18 @@ instance ToAbstract NiceDeclaration where
         Just (AsName (Left (C.Ident C.Qual{})) r) -> illformedAs "; a qualified name is not allowed here"
         Just (AsName (Left e)                  r) -> illformedAs ""
 
+      top <- S.topLevelModuleName (rawTopLevelModuleNameForQName x)
       -- First scope check the imported module and return its name and
       -- interface. This is done with that module as the top-level module.
       -- This is quite subtle. We rely on the fact that when setting the
       -- top-level module and generating a fresh module name, the generated
       -- name will be exactly the same as the name generated when checking
       -- the imported module.
-      (m, i) <- withCurrentModule noModuleName $ withTopLevelModule x $ do
+      (m, i) <- withCurrentModule noModuleName $
+                withTopLevelModule top $ do
         m <- toAbstract $ NewModuleQName x  -- (No longer erases the contents of @m@.)
         printScope "import" 10 "before import:"
-        (m, i) <- scopeCheckImport m
+        (m, i) <- scopeCheckImport top m
         printScope "import" 10 $ "scope checked import: " ++ prettyShow i
         -- We don't want the top scope of the imported module (things happening
         -- before the module declaration)
@@ -2374,6 +2393,15 @@ instance ToAbstract C.Pragma where
             sINLINE ++ " used on ambiguous name " ++ prettyShow x
           _        -> genericError $ "Target of " ++ sINLINE ++ " pragma should be a function"
       return [ A.InlinePragma b y ]
+  toAbstract (C.NotProjectionLikePragma _ x) = do
+      e <- toAbstract $ OldQName x Nothing
+      y <- case e of
+          A.Def  x -> return x
+          A.Proj _ p | Just x <- getUnambiguous p -> return x
+          A.Proj _ x -> genericError $
+            "NOT_PROJECTION_LIKE used on ambiguous name " ++ prettyShow x
+          _        -> genericError $ "Target of NOT_PROJECTION_LIKE pragma should be a function"
+      return [ A.NotProjectionLikePragma y ]
   toAbstract (C.BuiltinPragma _ rb qx)
     | isUntypedBuiltin b = do
         q <- toAbstract $ ResolveQName qx

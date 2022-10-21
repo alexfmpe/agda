@@ -76,6 +76,24 @@ Language
   incompatible with those things. Note that
   `--experimental-irrelevance` cannot be used together with `--safe`.
 
+* Two new reflection primitives
+
+  ```agda
+  declareData      : Name → Nat → Type → TC ⊤
+  defineData       : Name → List (Σ Name (λ _ → Type)) → TC ⊤
+  ```
+
+  are added for declaring and defining datatypes, similar to
+  `declareDef` and `defineDef`.
+
+* The construct `unquoteDecl` is extended with the ability of bringing
+  a datatype `d` and its constructors `c₁ ... cₙ` given by a `TC`
+  computation `m` into scope by the following syntax:
+
+  ```agda
+  unquoteDecl data x constructor c₁ .. cₙ = m
+  ```
+
 * A new reflection primitive `getInstances : Meta → TC (List Term)`
   was added to `Agda.Builtin.Reflection`. This operation returns the
   list of all possibly valid instance candidates for a given
@@ -211,6 +229,10 @@ Pragmas and options
 * Profiling options are now turned on with a new `--profile` flag instead of
   abusing the debug verbosity option. (See [#5781](https://github.com/agda/agda/issues/5731).)
 
+* The new profiling option `--profile=conversion` collects statistics
+  on how often various steps of the conversion algorithm are used
+  (reduction, eta-expansion, syntactic equality, etc).
+
 * The option `--without-K` has been renamed `--cubical-compatible` (See
   [#5843](https://github.com/agda/agda/issues/5843).)
 
@@ -223,6 +245,18 @@ Pragmas and options
 
   This option might for instance be used if Agda is controlled from a
   script.
+
+Builtins
+--------
+
+* Change `primFloatToWord64` to return `Maybe Word64`.
+  (See [#6093](https://github.com/agda/agda/issues/6093).)
+
+  The new type is
+  ```agda
+    primFloatToWord64 : Float → Maybe Word64
+  ```
+  and it returns `nothing` for `NaN`.
 
 Performance
 -----------
@@ -251,6 +285,8 @@ Performance
 
   The idea for this option comes from András Kovács'
   [smalltt](https://github.com/AndrasKovacs/smalltt/blob/989b020309686e04374f1ab7844f468386d2eb2f/README.md#approximate-conversion-checking).
+
+  Note that this option is experimental and subject to change.
 
 Compiler backends
 -----------------

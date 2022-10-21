@@ -69,7 +69,7 @@ data BoundaryConstraint' term
     , boundaryCheck   :: Bool
       -- ^ Should this boundary be checked during type-checking?
     }
-  deriving (Functor, Generic, Foldable, Traversable, Data)
+  deriving (Functor, Generic, Foldable, Traversable)
 
 -- | Represents the boundary of an elaboration context.
 --

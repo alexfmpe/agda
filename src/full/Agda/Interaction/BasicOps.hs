@@ -242,7 +242,7 @@ elaborate_give norm force ii mr e = withInteractionId ii $ do
         withInteractionId ii $ "Failed to give" TP.<+> prettyTCM e
       err -> throwError err
   nv <- normalForm norm v
-  locallyTC ePrintMetasBare (const True) $ reify nv
+  locallyTC ePrintMetasBare (const True) $ locallyReconstructed $ reify nv
 
 -- | Try to refine hole by expression @e@.
 --
@@ -1220,8 +1220,8 @@ introTactic pmLambda ii = do
 atTopLevel :: TCM a -> TCM a
 atTopLevel m = inConcreteMode $ do
   let err = typeError $ GenericError "The file has not been loaded yet."
-  caseMaybeM (useTC stCurrentModule) err $ \ current -> do
-    caseMaybeM (getVisitedModule $ toTopLevelModuleName current) __IMPOSSIBLE__ $ \ mi -> do
+  caseMaybeM (useTC stCurrentModule) err $ \(current, topCurrent) -> do
+    caseMaybeM (getVisitedModule topCurrent) __IMPOSSIBLE__ $ \ mi -> do
       let scope = iInsideScope $ miInterface mi
       tel <- lookupSection current
       -- Get the names of the local variables from @scope@
@@ -1372,10 +1372,13 @@ getModuleContents norm mm = do
   return (Map.keys modules, EmptyTel, types)
 
 
-whyInScope :: String -> TCM (Maybe LocalVar, [AbstractName], [AbstractModule])
-whyInScope s = do
+whyInScope :: FilePath -> String -> TCM WhyInScopeData
+whyInScope cwd s = do
   x     <- parseName noRange s
   scope <- getScope
-  return ( lookup x $ map (first C.QName) $ scope ^. scopeLocals
-         , scopeLookup x scope
-         , scopeLookup x scope )
+  return $ WhyInScopeData
+    x
+    cwd
+    (lookup x $ map (first C.QName) $ scope ^. scopeLocals)
+    (scopeLookup x scope)
+    (scopeLookup x scope)

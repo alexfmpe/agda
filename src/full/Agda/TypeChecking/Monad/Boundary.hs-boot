@@ -23,7 +23,6 @@ instance Traversable Boundary'
 
 instance NFData t => NFData (BoundaryConstraint' t)
 instance PrettyTCM t => PrettyTCM (BoundaryConstraint' t)
-instance Data t => Data (BoundaryConstraint' t)
 instance Functor BoundaryConstraint'
 instance Foldable BoundaryConstraint'
 instance Traversable BoundaryConstraint'

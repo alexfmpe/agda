@@ -97,6 +97,11 @@ prettyCohesion a d =
 prettyTactic :: BoundName -> Doc -> Doc
 prettyTactic = prettyTactic' . bnameTactic
 
+prettyFiniteness :: BoundName -> Doc -> Doc
+prettyFiniteness name
+  | bnameIsFinite name = ("@finite" <+>)
+  | otherwise = id
+
 prettyTactic' :: TacticAttribute -> Doc -> Doc
 prettyTactic' Nothing  d = d
 prettyTactic' (Just t) d = "@" <> (parens ("tactic" <+> pretty t) <+> d)
@@ -216,8 +221,6 @@ instance Pretty Expr where
             Rec _ xs  -> sep ["record", bracesAndSemicolons (map pretty xs)]
             RecUpdate _ e xs ->
               sep ["record" <+> pretty e, bracesAndSemicolons (map pretty xs)]
-            ETel []  -> "()"
-            ETel tel -> fsep $ map pretty tel
             Quote _ -> "quote"
             QuoteTerm _ -> "quoteTerm"
             Unquote _  -> "unquote"
@@ -300,6 +303,7 @@ instance Pretty TypedBinding where
     pretty (TBind _ xs e) = fsep
       [ prettyRelevance y
         $ prettyHiding y parens
+        $ prettyFiniteness (binderName $ namedArg y)
         $ prettyCohesion y
         $ prettyQuantity y
         $ prettyTactic (binderName $ namedArg y) $
@@ -580,6 +584,8 @@ instance Pretty Pragma where
     pretty (InjectivePragma _ i) =
       hsep $ ["INJECTIVE", pretty i]
     pretty (InlinePragma _ True i) =
+      hsep $ ["INLINE", pretty i]
+    pretty (NotProjectionLikePragma _ i) =
       hsep $ ["INLINE", pretty i]
     pretty (InlinePragma _ False i) =
       hsep $ ["NOINLINE", pretty i]

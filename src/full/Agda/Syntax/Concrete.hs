@@ -61,7 +61,6 @@ module Agda.Syntax.Concrete
   , Module(..)
   , ThingWithFixity(..)
   , HoleContent, HoleContent'(..)
-  , topLevelModuleName
   , spanAllowedBeforeModule
   )
   where
@@ -170,7 +169,6 @@ data Expr
   | As Range Name Expr                         -- ^ ex: @x\@p@, only in patterns
   | Dot Range Expr                             -- ^ ex: @.p@, only in patterns
   | DoubleDot Range Expr                       -- ^ ex: @..A@, used for parsing @..A -> B@
-  | ETel Telescope                             -- ^ only used for printing telescopes
   | Quote Range                                -- ^ ex: @quote@, should be applied to a name
   | QuoteTerm Range                            -- ^ ex: @quoteTerm@, should be applied to a term
   | Tactic Range Expr                          -- ^ ex: @\@(tactic t)@, used to declare tactic arguments
@@ -250,9 +248,10 @@ dropTypeAndModality (DomainFull TLet{}) = []
 dropTypeAndModality (DomainFree x) = [DomainFree $ setModality defaultModality x]
 
 data BoundName = BName
-  { boundName   :: Name
-  , bnameFixity :: Fixity'
-  , bnameTactic :: TacticAttribute -- From @tactic attribute
+  { boundName       :: Name
+  , bnameFixity     :: Fixity'
+  , bnameTactic     :: TacticAttribute -- From @tactic attribute
+  , bnameIsFinite   :: Bool
   }
   deriving Eq
 
@@ -262,7 +261,7 @@ mkBoundName_ :: Name -> BoundName
 mkBoundName_ x = mkBoundName x noFixity'
 
 mkBoundName :: Name -> Fixity' -> BoundName
-mkBoundName x f = BName x f Nothing
+mkBoundName x f = BName x f Nothing False
 
 -- | A typed binding.
 
@@ -543,6 +542,8 @@ data Pragma
   | PolarityPragma            Range Name [Occurrence]
   | NoUniverseCheckPragma     Range
     -- ^ Applies to the following data/record type.
+  | NotProjectionLikePragma   Range QName
+    -- ^ Applies to the stated function
   deriving Eq
 
 ---------------------------------------------------------------------------
@@ -553,19 +554,6 @@ data Module = Mod
   { modPragmas :: [Pragma]
   , modDecls   :: [Declaration]
   }
-
--- | Computes the top-level module name.
---
--- Precondition: The 'Module' has to be well-formed.
--- This means that there are only allowed declarations before the
--- first module declaration, typically import declarations.
--- See 'spanAllowedBeforeModule'.
-
-topLevelModuleName :: Module -> TopLevelModuleName
-topLevelModuleName (Mod _ []) = __IMPOSSIBLE__
-topLevelModuleName (Mod _ ds) = case spanAllowedBeforeModule ds of
-  (_, Module _ n _ _ : _) -> toTopLevelModuleName n
-  _ -> __IMPOSSIBLE__
 
 -- | Splits off allowed (= import) declarations before the first
 --   non-allowed declaration.
@@ -831,7 +819,6 @@ instance HasRange Expr where
       InstanceArg r _    -> r
       Rec r _            -> r
       RecUpdate r _ _    -> r
-      ETel tel           -> getRange tel
       Quote r            -> r
       QuoteTerm r        -> r
       Unquote r          -> r
@@ -955,6 +942,7 @@ instance HasRange Pragma where
   getRange (NoPositivityCheckPragma r)       = r
   getRange (PolarityPragma r _ _)            = r
   getRange (NoUniverseCheckPragma r)         = r
+  getRange (NotProjectionLikePragma r _)     = r
 
 instance HasRange AsName where
   getRange a = getRange (asRange a, asName a)
@@ -1020,7 +1008,7 @@ instance KillRange Binder where
   killRange (Binder a b) = killRange2 Binder a b
 
 instance KillRange BoundName where
-  killRange (BName n f t) = killRange3 BName n f t
+  killRange (BName n f t b) = killRange4 BName n f t b
 
 instance KillRange RecordDirective where
   killRange (Induction a)          = killRange1 Induction a
@@ -1088,7 +1076,6 @@ instance KillRange Expr where
   killRange (As _ n e)            = killRange2 (As noRange) n e
   killRange (Dot _ e)             = killRange1 (Dot noRange) e
   killRange (DoubleDot _ e)       = killRange1 (DoubleDot noRange) e
-  killRange (ETel t)              = killRange1 ETel t
   killRange (Quote _)             = Quote noRange
   killRange (QuoteTerm _)         = QuoteTerm noRange
   killRange (Unquote _)           = Unquote noRange
@@ -1160,6 +1147,7 @@ instance KillRange Pragma where
   killRange (NoPositivityCheckPragma _)       = NoPositivityCheckPragma noRange
   killRange (PolarityPragma _ q occs)         = killRange1 (\q -> PolarityPragma noRange q occs) q
   killRange (NoUniverseCheckPragma _)         = NoUniverseCheckPragma noRange
+  killRange (NotProjectionLikePragma _ q)     = NotProjectionLikePragma noRange q
 
 instance KillRange RHS where
   killRange AbsurdRHS = AbsurdRHS
@@ -1205,7 +1193,6 @@ instance NFData Expr where
   rnf (As _ a b)          = rnf a `seq` rnf b
   rnf (Dot _ a)           = rnf a
   rnf (DoubleDot _ a)     = rnf a
-  rnf (ETel a)            = rnf a
   rnf (Quote _)           = ()
   rnf (QuoteTerm _)       = ()
   rnf (Tactic _ a)        = rnf a
@@ -1302,6 +1289,7 @@ instance NFData Pragma where
   rnf (NoPositivityCheckPragma _)       = ()
   rnf (PolarityPragma _ a b)            = rnf a `seq` rnf b
   rnf (NoUniverseCheckPragma _)         = ()
+  rnf (NotProjectionLikePragma _ q)     = rnf q
 
 -- | Ranges are not forced.
 
@@ -1353,7 +1341,7 @@ instance NFData Binder where
   rnf (Binder a b) = rnf a `seq` rnf b
 
 instance NFData BoundName where
-  rnf (BName a b c) = rnf a `seq` rnf b `seq` rnf c
+  rnf (BName a b c d) = rnf a `seq` rnf b `seq` rnf c `seq` rnf d
 
 instance NFData a => NFData (RHS' a) where
   rnf AbsurdRHS = ()

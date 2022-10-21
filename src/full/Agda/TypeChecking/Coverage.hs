@@ -157,7 +157,9 @@ coverageCheck f t cs = do
   -- Storing the covering clauses so that checkIApplyConfluence_ can
   -- find them later.
   -- Andreas, 2019-03-27, only needed when --cubical
-  whenM (isJust . optCubical <$> pragmaOptions) $ do
+  -- Jesper, 2022-10-18, also needed for some backends, so keep when flag says so
+  opts <- pragmaOptions
+  when (isJust (optCubical opts) || optKeepCoveringClauses opts) $
     modifySignature $ updateDefinition f $ updateTheDef $ updateCovering $ const qss
 
 

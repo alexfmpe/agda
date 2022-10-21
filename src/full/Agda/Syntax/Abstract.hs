@@ -106,7 +106,6 @@ data Expr
   | Fun  ExprInfo (Arg Type) Type      -- ^ Non-dependent function space.
   | Let  ExprInfo (List1 LetBinding) Expr
                                        -- ^ @let bs in e@.
-  | ETel Telescope                     -- ^ Only used when printing telescopes.
   | Rec  ExprInfo RecordAssigns        -- ^ Record construction.
   | RecUpdate ExprInfo Expr Assigns    -- ^ Record update.
   | ScopedExpr ScopeInfo Expr          -- ^ Scope annotation.
@@ -222,6 +221,8 @@ data Pragma
     --   @eta-equality@ definition (as it is might make Agda loop).
   | InjectivePragma QName
   | InlinePragma Bool QName -- INLINE or NOINLINE
+  | NotProjectionLikePragma QName
+    -- Mark the definition as not being projection-like
   | DisplayPragma QName [NamedArg Pattern] Expr
   deriving (Show, Eq, Generic)
 
@@ -276,6 +277,26 @@ data LamBinding
 mkDomainFree :: NamedArg Binder -> LamBinding
 mkDomainFree = DomainFree Nothing
 
+-- | Extra information that is attached to a typed binding, that plays a
+-- role during type checking but strictly speaking is not part of the
+-- @name : type@" relation which a makes up a binding.
+data TypedBindingInfo
+  = TypedBindingInfo
+    { tbTacticAttr :: TacticAttr
+      -- ^ Does this binding have a tactic annotation?
+    , tbFinite     :: Bool
+      -- ^ Does this binding correspond to a Partial binder, rather than
+      -- to a Pi binder? Must be present here to be reflected into
+      -- abstract syntax later (and to be printed to the user later).
+    }
+  deriving (Show, Eq, Generic)
+
+defaultTbInfo :: TypedBindingInfo
+defaultTbInfo = TypedBindingInfo
+  { tbTacticAttr = Nothing
+  , tbFinite = False
+  }
+
 -- | A typed binding.  Appears in dependent function spaces, typed lambdas, and
 --   telescopes.  It might be tempting to simplify this to only bind a single
 --   name at a time, and translate, say, @(x y : A)@ to @(x : A)(y : A)@
@@ -291,14 +312,14 @@ mkDomainFree = DomainFree Nothing
 --   that the metas of the copy are aliases of the metas of the original.
 
 data TypedBinding
-  = TBind Range TacticAttr (List1 (NamedArg Binder)) Type
+  = TBind Range TypedBindingInfo (List1 (NamedArg Binder)) Type
     -- ^ As in telescope @(x y z : A)@ or type @(x y z : A) -> B@.
   | TLet Range (List1 LetBinding)
     -- ^ E.g. @(let x = e)@ or @(let open M)@.
   deriving (Show, Eq, Generic)
 
 mkTBind :: Range -> List1 (NamedArg Binder) -> Type -> TypedBinding
-mkTBind r = TBind r Nothing
+mkTBind r = TBind r defaultTbInfo
 
 mkTLet :: Range -> [LetBinding] -> Maybe TypedBinding
 mkTLet _ []     = Nothing
@@ -554,7 +575,6 @@ instance Eq Expr where
   Generalized a1 b1          == Generalized a2 b2          = (a1, b1) == (a2, b2)
   Fun a1 b1 c1               == Fun a2 b2 c2               = (a1, b1, c1) == (a2, b2, c2)
   Let a1 b1 c1               == Let a2 b2 c2               = (a1, b1, c1) == (a2, b2, c2)
-  ETel a1                    == ETel a2                    = a1 == a2
   Rec a1 b1                  == Rec a2 b2                  = (a1, b1) == (a2, b2)
   RecUpdate a1 b1 c1         == RecUpdate a2 b2 c2         = (a1, b1, c1) == (a2, b2, c2)
   Quote a1                   == Quote a2                   = a1 == a2
@@ -637,7 +657,6 @@ instance HasRange Expr where
     getRange (Let i _ _)             = getRange i
     getRange (Rec i _)               = getRange i
     getRange (RecUpdate i _ _)       = getRange i
-    getRange (ETel tel)              = getRange tel
     getRange (ScopedExpr _ e)        = getRange e
     getRange (Quote i)               = getRange i
     getRange (QuoteTerm i)           = getRange i
@@ -744,6 +763,9 @@ instance KillRange GeneralizeTelescope where
 instance KillRange DataDefParams where
   killRange (DataDefParams s tel) = DataDefParams s (killRange tel)
 
+instance KillRange TypedBindingInfo where
+  killRange (TypedBindingInfo a b) = killRange2 TypedBindingInfo a b
+
 instance KillRange TypedBinding where
   killRange (TBind r t xs e) = killRange4 TBind r t xs e
   killRange (TLet r lbs)     = killRange2 TLet r lbs
@@ -768,7 +790,6 @@ instance KillRange Expr where
   killRange (Let i ds e)             = killRange3 Let i ds e
   killRange (Rec i fs)               = killRange2 Rec i fs
   killRange (RecUpdate i e fs)       = killRange3 RecUpdate i e fs
-  killRange (ETel tel)               = killRange1 ETel tel
   killRange (ScopedExpr s e)         = killRange1 (ScopedExpr s) e
   killRange (Quote i)                = killRange1 Quote i
   killRange (QuoteTerm i)            = killRange1 QuoteTerm i
@@ -867,6 +888,7 @@ instance NFData LetBinding
 instance NFData a => NFData (Binder' a)
 instance NFData LamBinding
 instance NFData TypedBinding
+instance NFData TypedBindingInfo
 instance NFData GeneralizeTelescope
 instance NFData DataDefParams
 instance NFData ProblemEq
@@ -1049,7 +1071,6 @@ instance SubstExpr Expr where
     Generalized{}   -> __IMPOSSIBLE__
     Fun{}           -> __IMPOSSIBLE__
     Let{}           -> __IMPOSSIBLE__
-    ETel{}          -> __IMPOSSIBLE__
     RecUpdate{}     -> __IMPOSSIBLE__
     Quote{}         -> __IMPOSSIBLE__
     QuoteTerm{}     -> __IMPOSSIBLE__

@@ -69,6 +69,7 @@ import Agda.Utils.Pretty (prettyShow)
 import qualified Agda.Interaction.Options.Lenses as Lens
 
 import Agda.Utils.Impossible
+import Agda.Syntax.Abstract (TypedBindingInfo(tbTacticAttr))
 
 agdaTermType :: TCM Type
 agdaTermType = El (mkType 0) <$> primAgdaTerm
@@ -417,10 +418,9 @@ instance Unquote MetaId where
   unquote t = do
     t <- reduceQuotedTerm t
     case t of
-      Lit (LitMeta f x) -> liftTCM $ do
-        live <- (f ==) <$> getCurrentPath
-        unless live $ do
-            m <- fromMaybe __IMPOSSIBLE__ <$> lookupModuleFromSource f
+      Lit (LitMeta m x) -> liftTCM $ do
+        live <- (Just m ==) <$> currentTopLevelModule
+        unless live $
             typeError . GenericDocError =<<
               sep [ "Can't unquote stale metavariable"
                   , pretty m <> "._" <> pretty (metaId x) ]
@@ -461,7 +461,11 @@ instance Unquote Literal where
           , (c `isCon` primAgdaLitChar,   LitChar   <$> unquoteN x)
           , (c `isCon` primAgdaLitString, LitString <$> unquoteNString x)
           , (c `isCon` primAgdaLitQName,  LitQName  <$> unquoteN x)
-          , (c `isCon` primAgdaLitMeta,   LitMeta   <$> getCurrentPath <*> unquoteN x) ]
+          , (c `isCon` primAgdaLitMeta,
+             LitMeta
+               <$> (fromMaybe __IMPOSSIBLE__ <$> currentTopLevelModule)
+               <*> unquoteN x)
+          ]
           __IMPOSSIBLE__
       Con c _ _ -> __IMPOSSIBLE__
       _ -> throwError $ NonCanonical "literal" t
@@ -490,7 +494,7 @@ instance Unquote R.Term where
           , (c `isCon` primAgdaTermMeta,    R.Meta    <$> unquoteN x <*> unquoteN y)
           , (c `isCon` primAgdaTermLam,     R.Lam     <$> unquoteN x <*> unquoteN y)
           , (c `isCon` primAgdaTermPi,      mkPi      <$> unquoteN x <*> unquoteN y)
-          , (c `isCon` primAgdaTermExtLam,  R.ExtLam  <$> (List1.fromList __IMPOSSIBLE__ <$> unquoteN x) <*> unquoteN y)
+          , (c `isCon` primAgdaTermExtLam,  R.ExtLam  <$> (List1.fromListSafe __IMPOSSIBLE__ <$> unquoteN x) <*> unquoteN y)
           ]
           __IMPOSSIBLE__
         where
@@ -994,7 +998,7 @@ evalTCM v = do
             conNames = map fst cs
             toAxiom c e = A.Axiom ConName i defaultArgInfo Nothing c e
             as = zipWith toAxiom conNames es'
-            lams = map (\case {A.TBind _ tac (b :| []) _ -> A.DomainFree tac b
+            lams = map (\case {A.TBind _ tac (b :| []) _ -> A.DomainFree (tbTacticAttr tac) b
                               ;_ -> __IMPOSSIBLE__ }) tel
         reportSDoc "tc.unquote.def" 10 $ vcat $
           [ "checking datatype: " <+> prettyTCM x <+> " with constructors:"
