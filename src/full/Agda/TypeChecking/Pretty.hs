@@ -297,6 +297,9 @@ instance PrettyTCM Relevance where
 instance PrettyTCM Quantity where
   prettyTCM = pretty
 
+instance PrettyTCM Erased where
+  prettyTCM = pretty
+
 instance PrettyTCM Modality where
   prettyTCM mod = hsep
     [ prettyTCM (getQuantity mod)
