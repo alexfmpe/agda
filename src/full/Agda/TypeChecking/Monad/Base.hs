@@ -3409,6 +3409,11 @@ data TCEnv =
           , envQuantity            :: Quantity
                 -- ^ Are we checking a runtime-irrelevant thing? (='Quantity0')
                 -- Then runtime-irrelevant things are usable.
+          , envHardCompileTimeMode :: Bool
+                -- ^ Is the \"hard\" compile-time mode enabled? In
+                -- this mode the quantity component of the environment
+                -- is always zero, and every new definition is treated
+                -- as erased.
           , envSplitOnStrict       :: Bool
                 -- ^ Are we currently case-splitting on a strict
                 --   datatype (i.e. in SSet)? If yes, the
@@ -3537,6 +3542,7 @@ initEnv = TCEnv { envContext             = []
   -- definition (which sets 'AbstractMode').
                 , envRelevance              = unitRelevance
                 , envQuantity               = unitQuantity
+                , envHardCompileTimeMode    = False
                 , envSplitOnStrict          = False
                 , envDisplayFormsEnabled    = True
                 , envRange                  = noRange
@@ -3645,8 +3651,25 @@ eAbstractMode f e = f (envAbstractMode e) <&> \ x -> e { envAbstractMode = x }
 eRelevance :: Lens' Relevance TCEnv
 eRelevance f e = f (envRelevance e) <&> \x -> e { envRelevance = x }
 
+-- | Note that this lens does not satisfy all lens laws: If hard
+-- compile-time mode is enabled, then quantities other than zero are
+-- replaced by '__IMPOSSIBLE__'.
+
 eQuantity :: Lens' Quantity TCEnv
-eQuantity f e = f (envQuantity e) <&> \x -> e { envQuantity = x }
+eQuantity f e =
+  if envHardCompileTimeMode e
+  then f (check (envQuantity e)) <&>
+       \x -> e { envQuantity = check x }
+  else f (envQuantity e) <&> \x -> e { envQuantity = x }
+  where
+  check q
+    | hasQuantity0 q = q
+    | otherwise      = __IMPOSSIBLE__
+
+eHardCompileTimeMode :: Lens' Bool TCEnv
+eHardCompileTimeMode f e =
+  f (envHardCompileTimeMode e) <&>
+  \x -> e { envHardCompileTimeMode = x }
 
 eSplitOnStrict :: Lens' Bool TCEnv
 eSplitOnStrict f e = f (envSplitOnStrict e) <&> \ x -> e { envSplitOnStrict = x }
@@ -3969,6 +3992,8 @@ data Warning
     -- ^ The as-name in an as-pattern may not shadow a constructor (@False@)
     --   or pattern synonym name (@True@),
     --   because this can be confusing to read.
+  | PlentyInHardCompileTimeMode QωOrigin
+    -- ^ Explicit use of @@ω@ or @@plenty@ in hard compile-time mode.
   | RecordFieldWarning RecordFieldWarning
   deriving (Show, Generic)
 
@@ -4047,6 +4072,8 @@ warningName = \case
   RewriteAmbiguousRules{}      -> RewriteAmbiguousRules_
   RewriteMissingRule{}         -> RewriteMissingRule_
   PragmaCompileErased{}        -> PragmaCompileErased_
+  PlentyInHardCompileTimeMode{}
+                               -> PlentyInHardCompileTimeMode_
   -- record field warnings
   RecordFieldWarning w -> case w of
     DuplicateFieldsWarning{}   -> DuplicateFieldsWarning_

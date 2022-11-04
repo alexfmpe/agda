@@ -111,6 +111,7 @@ Finally, we can prove that ``merge`` is a left inverse for ``split``:
     hd-≡ (merge-split-id _)  = refl
     tl-≈ (merge-split-id xs) = merge-split-id (tl xs)
 
+.. _old-coinduction:
 
 Old Coinduction
 ---------------

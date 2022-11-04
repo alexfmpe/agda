@@ -86,6 +86,7 @@ instance EmbPrj Warning where
     ParseWarning a                        -> icodeN 38 ParseWarning a
     NoGuardednessFlag a                   -> icodeN 39 NoGuardednessFlag a
     UnsupportedIndexedMatch f             -> icodeN 40 UnsupportedIndexedMatch f
+    PlentyInHardCompileTimeMode a         -> icodeN 41 PlentyInHardCompileTimeMode a
 
   value = vcase $ \ case
     [0, a, b]            -> valuN UnreachableClauses a b
@@ -129,6 +130,7 @@ instance EmbPrj Warning where
     [38, a]              -> valuN ParseWarning a
     [39, a]              -> valuN NoGuardednessFlag a
     [40, a]              -> valuN UnsupportedIndexedMatch a
+    [41, a]              -> valuN PlentyInHardCompileTimeMode a
     _ -> malformed
 
 instance EmbPrj ParseWarning where
@@ -416,6 +418,7 @@ instance EmbPrj WarningName where
     InfectiveImport_                             -> 92
     DuplicateFieldsWarning_                      -> 93
     TooManyFieldsWarning_                        -> 94
+    PlentyInHardCompileTimeMode_                 -> 95
 
   value = \case
     0  -> return OverlappingTokensWarning_
@@ -513,6 +516,7 @@ instance EmbPrj WarningName where
     92 -> return InfectiveImport_
     93 -> return DuplicateFieldsWarning_
     94 -> return TooManyFieldsWarning_
+    95 -> return PlentyInHardCompileTimeMode_
     _ -> malformed
 
 
